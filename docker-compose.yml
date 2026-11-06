@@ -1,0 +1,71 @@
+# Runs the Fraud Rule Engine together with a real database.
+#
+#   PostgreSQL (default):  docker compose --profile postgres up --build
+#   MySQL:                 DB_PROFILE=mysql docker compose --profile mysql up --build   (or set it in .env)
+#
+# First copy .env.example to .env and set the passwords.  API: http://localhost:8080
+# Swagger UI: http://localhost:8080/swagger-ui.html
+
+name: fraud-rule-engine
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]                      # only started with --profile postgres
+    environment:
+      POSTGRES_DB: frauddb
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d frauddb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      default:
+        aliases: [db]                           # the app always connects to the host name "db"
+
+  mysql:
+    image: mysql:8.4
+    profiles: ["mysql"]                         # only started with --profile mysql
+    environment:
+      MYSQL_DATABASE: frauddb
+      MYSQL_USER: app
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      default:
+        aliases: [db]
+
+  fraud-engine:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      SPRING_PROFILES_ACTIVE: ${DB_PROFILE:-postgres}   # postgres | mysql | h2
+      DB_HOST: db
+      DB_USERNAME: app
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      FRAUD_ADMIN_PASSWORD: ${FRAUD_ADMIN_PASSWORD:?set FRAUD_ADMIN_PASSWORD in .env}
+      FRAUD_ANALYST_PASSWORD: ${FRAUD_ANALYST_PASSWORD:?set FRAUD_ANALYST_PASSWORD in .env}
+      FRAUD_INGESTION_PASSWORD: ${FRAUD_INGESTION_PASSWORD:?set FRAUD_INGESTION_PASSWORD in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      mysql:
+        condition: service_healthy
+        required: false
+    restart: on-failure                         # restart if the database or app has a transient startup failure
+
+volumes:
+  pgdata:
+  mysqldata:

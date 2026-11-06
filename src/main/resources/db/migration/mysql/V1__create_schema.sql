@@ -1,0 +1,72 @@
+-- Fraud Rule Engine schema (version 1)
+-- Flyway applies this file once. NEVER edit it after it has run: add V2__... instead.
+
+CREATE TABLE customers (
+    id           BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    full_name    VARCHAR(150) NOT NULL,
+    email        VARCHAR(254) NOT NULL,
+    home_country VARCHAR(2)   NOT NULL,                 -- ISO 3166-1 alpha-2, e.g. ZA
+    created_at   DATETIME(6)         NOT NULL,
+    CONSTRAINT uq_customers_email UNIQUE (email)
+);
+
+CREATE TABLE transactions (
+    id                BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    customer_id       BIGINT        NOT NULL,
+    reference         VARCHAR(64)   NOT NULL,           -- client-supplied id: makes ingestion idempotent
+    amount            DECIMAL(19,2) NOT NULL,           -- money is never a float; all amounts are ZAR
+    merchant_name     VARCHAR(150)  NOT NULL,
+    merchant_category VARCHAR(30)   NOT NULL,
+    country           VARCHAR(2)    NOT NULL,           -- where the purchase happened
+    occurred_at       DATETIME(6)          NOT NULL,           -- UTC
+    created_at        DATETIME(6)          NOT NULL,           -- UTC, when we received it
+    CONSTRAINT uq_transactions_reference UNIQUE (reference),
+    CONSTRAINT fk_transactions_customer FOREIGN KEY (customer_id) REFERENCES customers (id),
+    CONSTRAINT ck_transactions_amount CHECK (amount > 0)
+);
+-- The velocity, geography, gambling and card-testing rules all ask "this customer, recently".
+CREATE INDEX idx_transactions_customer_time ON transactions (customer_id, occurred_at);
+
+CREATE TABLE fraud_flags (
+    id             BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    transaction_id BIGINT       NOT NULL,
+    rule_code      VARCHAR(50)  NOT NULL,
+    severity       VARCHAR(20)  NOT NULL,
+    risk_score     INT          NOT NULL,
+    reason         VARCHAR(500) NOT NULL,
+    status         VARCHAR(20)  NOT NULL,
+    flagged_at     DATETIME(6)         NOT NULL,
+    reviewed_by    VARCHAR(100),
+    reviewed_at    DATETIME(6),
+    review_note    VARCHAR(500),
+    version        BIGINT       NOT NULL DEFAULT 0,     -- optimistic locking: two analysts, one flag
+    -- a rule can flag a given transaction only once (idempotency)
+    CONSTRAINT uq_flags_tx_rule UNIQUE (transaction_id, rule_code),
+    CONSTRAINT fk_flags_transaction FOREIGN KEY (transaction_id) REFERENCES transactions (id),
+    CONSTRAINT ck_flags_score CHECK (risk_score BETWEEN 0 AND 100)
+);
+CREATE INDEX idx_flags_status_severity ON fraud_flags (status, severity);
+CREATE INDEX idx_flags_flagged_at ON fraud_flags (flagged_at);
+
+-- Audit trail: every status change is recorded and never updated or deleted.
+CREATE TABLE flag_status_history (
+    id          BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    flag_id     BIGINT       NOT NULL,
+    from_status VARCHAR(20)  NOT NULL,
+    to_status   VARCHAR(20)  NOT NULL,
+    changed_by  VARCHAR(100) NOT NULL,
+    changed_at  DATETIME(6)         NOT NULL,
+    note        VARCHAR(500),
+    CONSTRAINT fk_history_flag FOREIGN KEY (flag_id) REFERENCES fraud_flags (id)
+);
+CREATE INDEX idx_history_flag ON flag_status_history (flag_id);
+
+CREATE TABLE blacklist_merchants (
+    id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    merchant_key  VARCHAR(150) NOT NULL,                -- lower-cased, trimmed name used for matching
+    merchant_name VARCHAR(150) NOT NULL,                -- name as entered, for display
+    reason        VARCHAR(255) NOT NULL,
+    added_at      DATETIME(6)         NOT NULL,
+    removed_at    DATETIME(6),                                 -- NULL = still blacklisted (soft delete keeps history)
+    CONSTRAINT uq_blacklist_key UNIQUE (merchant_key)
+);

@@ -1,0 +1,1237 @@
+{
+  "info": {
+    "_postman_id": "a7f1e6b4-9a2c-4d7f-8b91-2c6a4f8e1d33",
+    "name": "Fraud Rule Engine API",
+    "description": "Role-aware end-to-end tests for the Fraud Rule Engine. Import the matching Local environment and set its passwords. Run setup and functional requests in order before the review and cleanup requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('baseUrl')) { pm.environment.set('baseUrl', 'http://localhost:8080'); }"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    }
+  ],
+  "item": [
+    {
+      "name": "Public",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Health endpoint is available', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI document",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v3/api-docs"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('OpenAPI document is public', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin - setup",
+      "item": [
+        {
+          "name": "Create customer (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/customers",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Test Customer\",\n  \"email\": \"postman.{{$guid}}@example.com\",\n  \"homeCountry\": \"ZA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('testMerchantName', 'Postman Demo Merchant ' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Customer created', function () { pm.response.to.have.status(201); });",
+                  "const data = pm.response.json();",
+                  "pm.environment.set('customerId', data.id);",
+                  "pm.test('Customer id captured for later requests', function () { pm.expect(data.id).to.be.a('number'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List customers (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/customers?page=0&size=20",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Customer list returned', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add test merchant to blacklist (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/blacklist",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchantName\": \"{{testMerchantName}}\",\n  \"reason\": \"Postman collection test merchant\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Merchant added to blacklist', function () { pm.response.to.have.status(201); });",
+                  "const data = pm.response.json();",
+                  "pm.environment.set('blacklistId', data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create disposable customer for delete test (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/customers",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Disposable Postman Customer\",\n  \"email\": \"delete-test.{{$guid}}@example.com\",\n  \"homeCountry\": \"ZA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Disposable customer created', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('deletableCustomerId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Replace customer profile (PUT, ADMIN)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/customers/{{customerId}}",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Updated Postman Customer\",\n  \"email\": \"updated.{{$guid}}@example.com\",\n  \"homeCountry\": \"ZA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Customer profile replaced', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Customer ID remains unchanged', function () { pm.expect(pm.response.json().id).to.eql(Number(pm.environment.get('customerId'))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Replace blacklist entry (PUT, ADMIN)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/blacklist/{{blacklistId}}",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchantName\": \"{{testMerchantName}}\",\n  \"reason\": \"Updated by Postman PUT test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Blacklist entry updated', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Updated reason returned', function () { pm.expect(pm.response.json().reason).to.eql('Updated by Postman PUT test'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "item": [
+        {
+          "name": "Submit clean transaction (INGESTION)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/transactions",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{ingestionUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{ingestionPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"POSTMAN-CLEAN-{{$guid}}\",\n  \"customerId\": {{customerId}},\n  \"amount\": 120.50,\n  \"merchantName\": \"Postman Corner Shop\",\n  \"merchantCategory\": \"GROCERIES\",\n  \"country\": \"ZA\",\n  \"occurredAt\": \"{{$isoTimestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Transaction accepted', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Ordinary transaction is not flagged (unless another rule applies)', function () { pm.expect(pm.response.json().transaction.id).to.be.a('number'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit high-value transaction (INGESTION)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/transactions",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{ingestionUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{ingestionPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"POSTMAN-HIGH-{{$guid}}\",\n  \"customerId\": {{customerId}},\n  \"amount\": 60000.00,\n  \"merchantName\": \"Postman Electronics\",\n  \"merchantCategory\": \"RETAIL\",\n  \"country\": \"ZA\",\n  \"occurredAt\": \"{{$isoTimestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('High-value transaction accepted and screened', function () { pm.response.to.have.status(201); });",
+                  "const data = pm.response.json();",
+                  "pm.environment.set('highTransactionReference', data.transaction.reference);",
+                  "pm.environment.set('highTransactionId', data.transaction.id);",
+                  "const highFlag = (data.flags || []).find(f => f.ruleCode === 'HIGH_AMOUNT');",
+                  "if (highFlag) pm.environment.set('flagId', highFlag.id);",
+                  "pm.test('HIGH_AMOUNT rule fired', function () { pm.expect(highFlag, 'HIGH_AMOUNT flag').to.exist; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit transaction to blacklisted merchant (INGESTION)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/transactions",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{ingestionUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{ingestionPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"POSTMAN-BLACKLIST-{{$guid}}\",\n  \"customerId\": {{customerId}},\n  \"amount\": 350.00,\n  \"merchantName\": \"{{testMerchantName}}\",\n  \"merchantCategory\": \"OTHER\",\n  \"country\": \"ZA\",\n  \"occurredAt\": \"{{$isoTimestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Blacklisted-merchant transaction accepted and screened', function () { pm.response.to.have.status(201); });",
+                  "const data = pm.response.json();",
+                  "const hit = (data.flags || []).find(f => f.ruleCode === 'BLACKLIST_MERCHANT');",
+                  "if (hit) pm.environment.set('blacklistFlagId', hit.id);",
+                  "pm.test('BLACKLIST_MERCHANT rule fired', function () { pm.expect(hit, 'BLACKLIST_MERCHANT flag').to.exist; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit atomic batch (INGESTION)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/transactions/batch",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{ingestionUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{ingestionPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactions\": [\n    {\n      \"reference\": \"POSTMAN-BATCH-1-{{$guid}}\",\n      \"customerId\": {{customerId}},\n      \"amount\": 45.00,\n      \"merchantName\": \"Batch Grocer\",\n      \"merchantCategory\": \"GROCERIES\",\n      \"country\": \"ZA\",\n      \"occurredAt\": \"{{$isoTimestamp}}\"\n    },\n    {\n      \"reference\": \"POSTMAN-BATCH-2-{{$guid}}\",\n      \"customerId\": {{customerId}},\n      \"amount\": 85.00,\n      \"merchantName\": \"Batch Pharmacy\",\n      \"merchantCategory\": \"UTILITIES\",\n      \"country\": \"ZA\",\n      \"occurredAt\": \"{{$isoTimestamp}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Batch accepted atomically', function () { pm.response.to.have.status(201); });",
+                  "const data = pm.response.json();",
+                  "pm.test('Both batch items were processed', function () { pm.expect(data.received).to.eql(2); pm.expect(data.results).to.have.length(2); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Analyst",
+      "item": [
+        {
+          "name": "View active blacklist (ANALYST)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/blacklist",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Analyst can view active blacklist', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search fraud flags (ANALYST)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/flags?customerId={{customerId}}&page=0&size=50",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Analyst can search flags', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get high-value transaction (ANALYST)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/transactions/{{highTransactionId}}",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Analyst can read transaction', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get high-value transaction by reference (ANALYST)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/transactions/reference/{{highTransactionReference}}",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reference lookup succeeds', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returned reference matches the submitted reference', function () { pm.expect(pm.response.json().transaction.reference).to.eql(pm.environment.get('highTransactionReference')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get captured flag (ANALYST)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/flags/{{flagId}}",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Analyst can read flag', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Move flag to UNDER_REVIEW (ANALYST)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/flags/{{flagId}}/status",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"UNDER_REVIEW\",\n  \"note\": \"Postman test: analyst started investigation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Flag moved to UNDER_REVIEW', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('UNDER_REVIEW'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm fraud (ANALYST)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/flags/{{flagId}}/status",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CONFIRMED_FRAUD\",\n  \"note\": \"Postman test: suspicious transaction confirmed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Flag moved to CONFIRMED_FRAUD', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('CONFIRMED_FRAUD'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "View flag audit history (ANALYST)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/flags/{{flagId}}/history",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Flag audit trail returned', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().length).to.be.at.least(2); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin - audit and cleanup",
+      "item": [
+        {
+          "name": "View blacklist history (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/blacklist/history",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin can view blacklist history', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove test merchant from blacklist (ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/blacklist/{{blacklistId}}",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin can soft-remove merchant', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete unused customer (DELETE, ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/customers/{{deletableCustomerId}}",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin can delete a customer with no transactions', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Security checks (403 expected)",
+      "item": [
+        {
+          "name": "INGESTION cannot read flags (expect 403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/flags",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{ingestionUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{ingestionPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Ingestion is forbidden from reading flags', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ANALYST cannot create customer (expect 403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/customers",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Should Be Forbidden\",\n  \"email\": \"forbidden.{{$guid}}@example.com\",\n  \"homeCountry\": \"ZA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Analyst cannot create customers', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ANALYST cannot manage blacklist (expect 403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/blacklist",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchantName\": \"Forbidden Merchant\",\n  \"reason\": \"Permission test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Analyst cannot modify blacklist', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ANALYST cannot view full blacklist history (expect 403)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/v1/blacklist/history"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Only admins can view full blacklist history', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ANALYST cannot update customer (expect 403)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/customers/{{customerId}}",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Forbidden Update\",\n  \"email\": \"forbidden.{{$guid}}@example.com\",\n  \"homeCountry\": \"ZA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Analyst cannot update customer', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ANALYST cannot delete customer (expect 403)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/customers/{{deletableCustomerId}}",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{analystUsername}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{analystPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Analyst cannot delete customer', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
